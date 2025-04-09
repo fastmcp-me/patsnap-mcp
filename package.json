@@ -1,4 +1,5 @@
 {
+  "type": "module",
   "name": "patsnap-mcp",
   "version": "1.0.0",
   "description": "MCP Server for PatSnap API",
@@ -8,16 +9,14 @@
     "build": "tsc"
   },
   "dependencies": {
-    "axios": "^0.27.2",
-    "mcp-server-stdio": "^1.0.0",
-    "dotenv": "^16.0.0",
-    "@modelcontextprotocol/sdk": "^0.1.0",
-    "node-fetch": "^2.6.7"
+    "@modelcontextprotocol/sdk": "^1.9.0",
+    "axios": "^1.7.7",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
-    "typescript": "^4.8.3",
+    "@types/node": "^18.19.86",
     "ts-node": "^10.9.1",
-    "@types/node": "^18.0.0"
+    "typescript": "^4.8.3"
   },
   "author": "",
   "license": "MIT"
