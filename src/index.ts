@@ -1,7 +1,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, McpError, ServerResult } from '@modelcontextprotocol/sdk/types.js';
-import fetch from 'node-fetch';
 
 const PATSNAP_CLIENT_ID = process.env.PATSNAP_CLIENT_ID;
 const PATSNAP_CLIENT_SECRET = process.env.PATSNAP_CLIENT_SECRET;
@@ -163,7 +162,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-server.setRequestHandler(CallToolRequestSchema, async (req) => {
+server.setRequestHandler(CallToolRequestSchema, async (req: any) => {
   const { name, arguments: args } = req.params;
   if (name === 'get_patent_by_number') {
     if (!args || !('patentNumber' in args)) {
