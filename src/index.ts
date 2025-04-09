@@ -1,9 +1,13 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, McpError, ServerResult } from '@modelcontextprotocol/sdk/types.js';
+import fs from 'fs';
 
 const PATSNAP_CLIENT_ID = process.env.PATSNAP_CLIENT_ID;
 const PATSNAP_CLIENT_SECRET = process.env.PATSNAP_CLIENT_SECRET;
+
+const PATSNAP_API_KEY = process.env.PATSNAP_API_KEY;
+
 
 async function getAccessToken(): Promise<string> {
   if (!PATSNAP_CLIENT_ID || !PATSNAP_CLIENT_SECRET) {
@@ -26,13 +30,18 @@ async function getAccessToken(): Promise<string> {
     throw new McpError(response.status, `Failed to get token: ${text}`);
   }
 
-  const json = await response.json() as { token: string };
-  return json.token;
+  const json = await response.json();
+  fs.appendFileSync('patsnap_token_response.log', `\nPatSnap token response: ${JSON.stringify(json, null, 2)}\n`);
+  const token = json.access_token || json.token || (json.data && json.data.token);
+  if (!token) {
+    throw new McpError(500, 'Failed to parse access token');
+  }
+  return token;
 }
 
 async function searchPatentFields(args: { query: string; field: string; lang?: string; limit?: number; offset?: number }): Promise<ServerResult> {
   const token = await getAccessToken();
-  const response = await fetch('https://connect.patsnap.com/patent-field/query', {
+  const response = await fetch(`https://connect.patsnap.com/patent-field/query?apikey=${PATSNAP_API_KEY}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
