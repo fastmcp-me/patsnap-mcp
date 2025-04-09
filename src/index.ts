@@ -30,25 +30,26 @@ async function getAccessToken(): Promise<string> {
   return json.token;
 }
 
-async function searchPatents(args: { query_text: string; collapse_type?: string; collapse_by?: string; collapse_order?: string }): Promise<ServerResult> {
+async function searchPatentFields(args: { query: string; field: string; lang?: string; limit?: number; offset?: number }): Promise<ServerResult> {
   const token = await getAccessToken();
-  const response = await fetch('https://connect.patsnap.com/search/patent/query-search-count', {
+  const response = await fetch('https://connect.patsnap.com/patent-field/query', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`
     },
     body: JSON.stringify({
-      query_text: args.query_text,
-      collapse_type: args.collapse_type,
-      collapse_by: args.collapse_by,
-      collapse_order: args.collapse_order
+      query: args.query,
+      field: args.field,
+      lang: args.lang ?? 'cn',
+      limit: args.limit ?? 50,
+      offset: args.offset ?? 0
     })
   });
 
   if (!response.ok) {
     const text = await response.text();
-    throw new McpError(response.status, `Failed to search patents: ${text}`);
+    throw new McpError(response.status, `Failed to search patent fields: ${text}`);
   }
 
   const json = await response.json();
@@ -63,29 +64,6 @@ async function searchPatents(args: { query_text: string; collapse_type?: string;
 }
 
 
-async function getPatentByNumber(args: { patentNumber: string }): Promise<ServerResult> {
-  const token = await getAccessToken();
-  const response = await fetch(`https://openapi.patsnap.com/api/v1/patents/${args.patentNumber}`, {
-    headers: {
-      'Authorization': `Bearer ${token}`
-    }
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new McpError(response.status, `Failed to fetch patent: ${text}`);
-  }
-
-  const json = await response.json();
-  return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(json, null, 2)
-      }
-    ]
-  };
-}
 
 const server = new Server(
   {
@@ -95,20 +73,6 @@ const server = new Server(
   {
     capabilities: {
       tools: {
-        get_patent_by_number: {
-          description: 'Fetch patent data from PatSnap by patent number',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              patentNumber: {
-                type: 'string',
-                description: 'The patent number to retrieve'
-              }
-            },
-            required: ['patentNumber']
-          },
-          handler: getPatentByNumber
-        }
       },
       resources: {}
     }
@@ -119,43 +83,33 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: 'get_patent_by_number',
-        description: 'Fetch patent data from PatSnap by patent number',
+        name: 'search_patent_fields',
+        description: 'Search patent statistics using PatSnap Analytics Query Search and Filter API',
         inputSchema: {
           type: 'object',
           properties: {
-            patentNumber: {
+            query: {
               type: 'string',
-              description: 'The patent number to retrieve'
+              description: 'Analytics query string'
+            },
+            field: {
+              type: 'string',
+              description: 'Comma-separated field codes (e.g., ASSIGNEE, INVENTOR)'
+            },
+            lang: {
+              type: 'string',
+              description: 'Language code (cn, en, jp)'
+            },
+            limit: {
+              type: 'number',
+              description: 'Number of results to return (default 50)'
+            },
+            offset: {
+              type: 'number',
+              description: 'Offset for pagination (default 0)'
             }
           },
-          required: ['patentNumber']
-        }
-      },
-      {
-        name: 'search_patents',
-        description: 'Search patents in PatSnap database',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            query_text: {
-              type: 'string',
-              description: 'Analytics query'
-            },
-            collapse_type: {
-              type: 'string',
-              description: 'Collapse type (ALL, APNO, DOCDB, INPADOC, EXTEND)'
-            },
-            collapse_by: {
-              type: 'string',
-              description: 'Collapse by (APD, PBD, AUTHORITY, SCORE)'
-            },
-            collapse_order: {
-              type: 'string',
-              description: 'Collapse order (OLDEST, LATEST)'
-            }
-          },
-          required: ['query_text']
+          required: ['query', 'field']
         }
       }
     ]
@@ -164,16 +118,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 server.setRequestHandler(CallToolRequestSchema, async (req: any) => {
   const { name, arguments: args } = req.params;
-  if (name === 'get_patent_by_number') {
-    if (!args || !('patentNumber' in args)) {
-      throw new McpError(400, 'Missing required argument: patentNumber');
+  if (name === 'search_patent_fields') {
+    if (!args || !('query' in args) || !('field' in args)) {
+      throw new McpError(400, 'Missing required argument: query or field');
     }
-    return await getPatentByNumber(args as { patentNumber: string });
-  } else if (name === 'search_patents') {
-    if (!args || !('query_text' in args)) {
-      throw new McpError(400, 'Missing required argument: query_text');
-    }
-    return await searchPatents(args as { query_text: string; collapse_type?: string; collapse_by?: string; collapse_order?: string });
+    return await searchPatentFields(args as { query: string; field: string; lang?: string; limit?: number; offset?: number });
   } else {
     throw new McpError(404, `Unknown tool: ${name}`);
   }
