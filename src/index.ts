@@ -182,6 +182,43 @@ async function getTopAuthoritiesOfOrigin(args: { keywords?: string; ipc?: string
   };
 }
 
+// [A005] Most Cited Patents
+async function getMostCitedPatents(args: { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string }): Promise<ServerResult> {
+  const token = await getAccessToken();
+  const params = new URLSearchParams();
+  if (args.keywords) params.append('keywords', args.keywords);
+  if (args.ipc) params.append('ipc', args.ipc);
+  if (args.apply_start_time) params.append('apply_start_time', args.apply_start_time);
+  if (args.apply_end_time) params.append('apply_end_time', args.apply_end_time);
+  if (args.public_start_time) params.append('public_start_time', args.public_start_time);
+  if (args.public_end_time) params.append('public_end_time', args.public_end_time);
+  if (args.authority) params.append('authority', args.authority);
+  if (PATSNAP_CLIENT_ID) params.append('apikey', PATSNAP_CLIENT_ID);
+
+  const url = `https://connect.patsnap.com/insights/most-cited?${params.toString()}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new McpError(response.status, `Failed to get most cited patents: ${text}`);
+  }
+  const json = await response.json();
+  return {
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify(json, null, 2)
+      }
+    ]
+  };
+}
+
+
 
 
 
@@ -320,8 +357,44 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           }
         }
-      }
-      ,
+      },
+      {
+        name: 'get_most_cited_patents',
+        description: 'View the top records that have been cited most frequently by other records to understand which records are more prolific and have had their technology built upon by others. These patents are likely to be more influential and may represent the core, innovative technology of the organization it represents. Returns at most Top 10 patent information. Note: Search must contain either keywords or IPC. If search contains both parameters, IPC will be prioritized.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            keywords: {
+              type: 'string',
+              description: 'Searches for keywords within patent title and summary. Supports AND, OR, NOT search logic, for example "mobile phone AND (screen OR battery)".'
+            },
+            ipc: {
+              type: 'string',
+              description: 'Patent IPC classification'
+            },
+            apply_start_time: {
+              type: 'string',
+              description: 'Patent apply date from, format:yyyy'
+            },
+            apply_end_time: {
+              type: 'string',
+              description: 'Patent apply date to, format:yyyy'
+            },
+            public_start_time: {
+              type: 'string',
+              description: 'Patent publication date from, format:yyyy'
+            },
+            public_end_time: {
+              type: 'string',
+              description: 'Patent publication date to, format:yyyy'
+            },
+            authority: {
+              type: 'string',
+              description: 'Select the authority of the patent, the default query all databases, eg CN、US、EP、JP.'
+            }
+          }
+        }
+      },
       {
         name: 'get_top_authorities_of_origin',
         description: 'Returns the top authorities (priority countries) of origin for patents matching the given criteria. Useful for analyzing which countries are the main sources of priority filings in a technology field. Either keywords or IPC classification must be specified.',
@@ -364,7 +437,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       }
     ]
-  };
+};
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (req: any) => {
@@ -377,6 +450,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req: any) => {
     return await getWheelOfInnovation(args as { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string; lang?: string });
   } else if (name === 'get_top_authorities_of_origin') {
     return await getTopAuthoritiesOfOrigin(args as { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string; lang?: string });
+  } else if (name === 'get_most_cited_patents') {
+    return await getMostCitedPatents(args as { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string });
   } else {
     throw new McpError(404, `Unknown tool: ${name}`);
   }
