@@ -35,9 +35,9 @@ To integrate this MCP server with your MCP Host, add the following configuration
 ```json
 {
   "mcpServers": {
-    "patsnap-mcp": {
-      "command": "node", // Or your execution command
-      "args": ["/path/to/patsnap-mcp/build/index.js"], // Adjust path as needed
+    "@kunihiros/patsnap-mcp": {
+      "command": "npx",
+      "args": ["@kunihiros/patsnap-mcp"],
       "env": {
         "PATSNAP_CLIENT_ID": "your_patsnap_client_id_here",
         "PATSNAP_CLIENT_SECRET": "your_patsnap_client_secret_here"
@@ -49,7 +49,7 @@ To integrate this MCP server with your MCP Host, add the following configuration
 }
 ```
 
-Ensure you replace `your_patsnap_client_id_here` and `your_patsnap_client_secret_here` with your actual PatSnap API credentials. Adjust the `command` and `args` based on how you run the built server (e.g., using `node` directly on the built `index.js` file).
+Ensure you replace `your_patsnap_client_id_here` and `your_patsnap_client_secret_here` with your actual PatSnap API credentials. This configuration allows the MCP Host to invoke the server using `npx @kunihiros/patsnap-mcp`.
 
 ## License
 
