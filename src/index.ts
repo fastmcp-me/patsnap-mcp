@@ -6,9 +6,6 @@ import fs from 'fs';
 const PATSNAP_CLIENT_ID = process.env.PATSNAP_CLIENT_ID;
 const PATSNAP_CLIENT_SECRET = process.env.PATSNAP_CLIENT_SECRET;
 
-const PATSNAP_API_KEY = process.env.PATSNAP_API_KEY;
-
-
 async function getAccessToken(): Promise<string> {
   if (!PATSNAP_CLIENT_ID || !PATSNAP_CLIENT_SECRET) {
     throw new McpError(500, 'Missing PATSNAP_CLIENT_ID or PATSNAP_CLIENT_SECRET');
@@ -49,7 +46,7 @@ async function getPatentTrends(args: { keywords?: string; ipc?: string; apply_st
   if (args.public_start_time) params.append('public_start_time', args.public_start_time);
   if (args.public_end_time) params.append('public_end_time', args.public_end_time);
   if (args.authority) params.append('authority', args.authority);
-  params.append('apikey', PATSNAP_API_KEY ?? '');
+  if (PATSNAP_CLIENT_ID) params.append('apikey', PATSNAP_CLIENT_ID);
 
   const url = `https://connect.patsnap.com/insights/patent-trends?${params.toString()}`;
   const response = await fetch(url, {
