@@ -90,7 +90,7 @@ async function callPatsnapApi(endpoint: string, params: URLSearchParams, errorCo
 }
 
 
-// --- Existing Tool Functions (using helpers for brevity, but structure maintained) ---
+// --- Existing Tool Functions ---
 
 async function getPatentTrends(args: { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string }): Promise<ServerResult> {
   const params = buildCommonSearchParams(args);
@@ -126,12 +126,20 @@ async function getMostCitedPatents(args: { keywords?: string; ipc?: string; appl
   return callPatsnapApi('most-cited', params, 'get most cited patents');
 }
 
-// +++ NEW FUNCTION +++
-// [A006] Top Inventors
 async function getTopInventors(args: { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string }): Promise<ServerResult> {
   const params = buildCommonSearchParams(args);
   // No 'lang' parameter for this endpoint
   return callPatsnapApi('inventor-ranking', params, 'get top inventors');
+}
+
+// +++ NEW FUNCTION +++
+// [A007] Top Assignees
+async function getTopAssignees(args: { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string; lang?: string }): Promise<ServerResult> {
+  const params = buildCommonSearchParams(args);
+  if (!args.lang) { // Add default lang if not provided
+      params.append('lang', 'en');
+  }
+  return callPatsnapApi('applicant-ranking', params, 'get top assignees');
 }
 // +++ END NEW FUNCTION +++
 
@@ -236,7 +244,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           }
         }
       },
-      // +++ NEW TOOL DEFINITION +++
       {
         name: 'get_top_inventors',
         description: 'Shows the top inventors in the technology field. Useful for evaluating top performers or recruiting. Returns up to the top 10 inventors. Note: Search must contain either keywords or IPC. If search contains both parameters, IPC will be prioritized.',
@@ -251,6 +258,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             public_end_time: { type: 'string', description: 'Patent publication date to, format:yyyy' },
             authority: { type: 'string', description: 'Select the authority of the patent, the default query all databases, eg CN、US、EP、JP.' }
           }
+        }
+      },
+      // +++ NEW TOOL DEFINITION +++
+      {
+        name: 'get_top_assignees',
+        description: 'Shows the top companies (assignees) with the largest patent portfolios in the technology field. Understand who are the largest players and competitive threats. Returns up to the top 10 assignees. Note: Search must contain either keywords or IPC. If search contains both parameters, IPC will be prioritized.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            keywords: { type: 'string', description: 'Searches for keywords within patent title and summary. Supports AND, OR, NOT search logic, for example "mobile phone AND (screen OR battery)".' },
+            ipc: { type: 'string', description: 'Patent IPC classification' },
+            apply_start_time: { type: 'string', description: 'Patent apply date from, format:yyyy' },
+            apply_end_time: { type: 'string', description: 'Patent apply date to, format:yyyy' },
+            public_start_time: { type: 'string', description: 'Patent publication date from, format:yyyy' },
+            public_end_time: { type: 'string', description: 'Patent publication date to, format:yyyy' },
+            authority: { type: 'string', description: 'Select the authority of the patent, the default query all databases, eg CN、US、EP、JP.' },
+            lang: { type: 'string', description: 'Select the language. Default is "en" (English). You can choose "cn" (Chinese) or "en" (English).' }
+          },
+          required: ['lang'] // API documentation indicates lang is required, although it defaults to 'en' if omitted. Let's make it explicit.
         }
       }
       // +++ END NEW TOOL DEFINITION +++
@@ -292,9 +318,12 @@ server.setRequestHandler(CallToolRequestSchema, async (req: any) => {
     return await getTopAuthoritiesOfOrigin(toolArgs as LangPatentArgs);
   } else if (name === 'get_most_cited_patents') {
     return await getMostCitedPatents(toolArgs as BasePatentArgs);
-  // +++ NEW TOOL HANDLER +++
   } else if (name === 'get_top_inventors') {
     return await getTopInventors(toolArgs as BasePatentArgs);
+  // +++ NEW TOOL HANDLER +++
+  } else if (name === 'get_top_assignees') {
+    // This API uses lang, so we cast to LangPatentArgs
+    return await getTopAssignees(toolArgs as LangPatentArgs);
   // +++ END NEW TOOL HANDLER +++
   } else {
     console.error(`Unknown tool called: ${name}`); // Log unknown tool calls
