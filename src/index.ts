@@ -39,28 +39,30 @@ async function getAccessToken(): Promise<string> {
   return token;
 }
 
-async function searchPatentFields(args: { query: string; field: string; lang?: string; limit?: number; offset?: number }): Promise<ServerResult> {
+async function getPatentTrends(args: { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string }): Promise<ServerResult> {
   const token = await getAccessToken();
-  const response = await fetch(`https://connect.patsnap.com/patent-field/query?apikey=${PATSNAP_API_KEY}`, {
-    method: 'POST',
+  const params = new URLSearchParams();
+  if (args.keywords) params.append('keywords', args.keywords);
+  if (args.ipc) params.append('ipc', args.ipc);
+  if (args.apply_start_time) params.append('apply_start_time', args.apply_start_time);
+  if (args.apply_end_time) params.append('apply_end_time', args.apply_end_time);
+  if (args.public_start_time) params.append('public_start_time', args.public_start_time);
+  if (args.public_end_time) params.append('public_end_time', args.public_end_time);
+  if (args.authority) params.append('authority', args.authority);
+  params.append('apikey', PATSNAP_API_KEY ?? '');
+
+  const url = `https://connect.patsnap.com/insights/patent-trends?${params.toString()}`;
+  const response = await fetch(url, {
+    method: 'GET',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`
-    },
-    body: JSON.stringify({
-      query: args.query,
-      field: args.field,
-      lang: args.lang ?? 'cn',
-      limit: args.limit ?? 50,
-      offset: args.offset ?? 0
-    })
+    }
   });
-
   if (!response.ok) {
     const text = await response.text();
-    throw new McpError(response.status, `Failed to search patent fields: ${text}`);
+    throw new McpError(response.status, `Failed to get patent trends: ${text}`);
   }
-
   const json = await response.json();
   return {
     content: [
@@ -71,6 +73,8 @@ async function searchPatentFields(args: { query: string; field: string; lang?: s
     ]
   };
 }
+
+
 
 
 
@@ -92,33 +96,40 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: 'search_patent_fields',
-        description: 'Search patent statistics using PatSnap Analytics Query Search and Filter API',
+        name: 'get_patent_trends',
+        description: 'Analyze annual application and issued trends for patents (keywords or IPC required)',
         inputSchema: {
           type: 'object',
           properties: {
-            query: {
+            keywords: {
               type: 'string',
-              description: 'Analytics query string'
+              description: 'Keywords for search (title and abstract)'
             },
-            field: {
+            ipc: {
               type: 'string',
-              description: 'Comma-separated field codes (e.g., ASSIGNEE, INVENTOR)'
+              description: 'IPC classification code'
             },
-            lang: {
+            apply_start_time: {
               type: 'string',
-              description: 'Language code (cn, en, jp)'
+              description: 'Application start year (yyyy)'
             },
-            limit: {
-              type: 'number',
-              description: 'Number of results to return (default 50)'
+            apply_end_time: {
+              type: 'string',
+              description: 'Application end year (yyyy)'
             },
-            offset: {
-              type: 'number',
-              description: 'Offset for pagination (default 0)'
+            public_start_time: {
+              type: 'string',
+              description: 'Publication start year (yyyy)'
+            },
+            public_end_time: {
+              type: 'string',
+              description: 'Publication end year (yyyy)'
+            },
+            authority: {
+              type: 'string',
+              description: 'Patent authority (e.g., CN, US, JP)'
             }
-          },
-          required: ['query', 'field']
+          }
         }
       }
     ]
@@ -127,11 +138,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 server.setRequestHandler(CallToolRequestSchema, async (req: any) => {
   const { name, arguments: args } = req.params;
-  if (name === 'search_patent_fields') {
-    if (!args || !('query' in args) || !('field' in args)) {
-      throw new McpError(400, 'Missing required argument: query or field');
-    }
-    return await searchPatentFields(args as { query: string; field: string; lang?: string; limit?: number; offset?: number });
+  if (name === 'get_patent_trends') {
+    return await getPatentTrends(args as { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string });
   } else {
     throw new McpError(404, `Unknown tool: ${name}`);
   }
