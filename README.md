@@ -5,6 +5,7 @@ This MCP server is designed to collect patent-related information from PatSnap's
 ## Features
 
 - **get_patent_trends**: Analyze annual application and issued trends for patents using PatSnap's Application and Issued Trend API. Supports filtering by keywords, IPC classification, application/publication dates, and patent authority.
+- **get_word_cloud**: Get a snapshot view of keywords and phrases in the technology space from the most recent 5,000 publications using PatSnap's Word Cloud API. Returns up to the top 100 keywords. Supports filtering by keywords or IPC.
 - Additional tools for patent technology trend investigation are planned, focusing on features classified under Technology Key Report.
 
 ## Setup
@@ -20,7 +21,7 @@ This MCP server is designed to collect patent-related information from PatSnap's
 
 ## Configuration for MCP Host
 
-To integrate this MCP server with your MCP Host, add the following configuration to your Host configuration file:
+To integrate this MCP server with your MCP Host, add the following configuration to your `cline_mcp_settings.json` file located at `/home/kunihiros/.vscode-server/data/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`:
 
 ```json
 {
