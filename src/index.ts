@@ -21,6 +21,27 @@ const LOG_FILE_PATH = 'patsnap_token_response.log'; // Define log file path (rel
 let cachedToken: { token: string; expiresAt: number } | null = null;
 const TOKEN_EXPIRY_BUFFER_SECONDS = 60; // Fetch new token 60 seconds before expiry
 
+// --- Interface for Token Response (Optional but Recommended) ---
+interface PatsnapTokenResponse {
+    access_token?: string;
+    token?: string;
+    data?: {
+        token?: string;
+    };
+    expires_in?: number;
+    expiresIn?: number; // Common alternative naming
+    // Add other potential fields if known
+}
+
+// --- Interface for General API Response Structure (Optional but Recommended) ---
+interface PatsnapApiResponse {
+    status?: boolean;
+    error_code?: number;
+    error_msg?: string;
+    data?: any; // Define more specific types for 'data' if possible per endpoint
+}
+
+
 async function getAccessToken(): Promise<string> {
   const now = Date.now() / 1000; // Current time in seconds
 
@@ -65,9 +86,9 @@ async function getAccessToken(): Promise<string> {
     throw new McpError(response.status, `Failed to get PatSnap access token: ${errorText}`);
   }
 
-  let json: any;
+  let json: PatsnapTokenResponse; // Use interface type
   try {
-      json = await response.json();
+      json = await response.json() as PatsnapTokenResponse; // Type assertion
   } catch (error) {
       console.error("Error parsing token response JSON:", error);
       cachedToken = null;
@@ -83,14 +104,12 @@ async function getAccessToken(): Promise<string> {
   }
 
   // More robust token parsing and expiry handling
-  // Check common variations of token field names
   const token = json.access_token || json.token || (json.data && json.data.token);
-  // Check common variations of expiry field names (e.g., expires_in, expiresIn)
   const expiresIn = json.expires_in || json.expiresIn;
 
   if (!token || typeof token !== 'string') { // Add type check for token
     cachedToken = null; // Ensure cache is clear if token is invalid
-    throw new McpError(500, 'Failed to parse access token from PatSnap response structure.');
+    throw new McpError(500, 'Failed to parse "access_token" or equivalent from PatSnap token response.');
   }
 
   if (typeof expiresIn === 'number' && expiresIn > 0) {
@@ -164,19 +183,19 @@ async function callPatsnapApi(endpoint: string, params: URLSearchParams, errorCo
         throw new McpError(response.status, `Failed to ${errorContext}: ${errorText}`);
     }
 
-    let json: any;
+    let json: PatsnapApiResponse; // Use interface type
     try {
-        json = await response.json();
+        json = await response.json() as PatsnapApiResponse; // Type assertion
     } catch (error) {
         console.error(`Error parsing JSON response from ${endpoint}:`, error);
         throw new McpError(500, `Failed to parse JSON response from PatSnap API (${endpoint}): ${error instanceof Error ? error.message : String(error)}`);
     }
 
     // Basic check for PatSnap's own error structure within a 200 OK response
-    if (json && json.status === false && json.error_code !== 0) {
+    if (json && typeof json.status === 'boolean' && json.status === false && json.error_code !== 0) {
         console.error(`PatSnap API returned error within successful response for ${endpoint}: Code ${json.error_code}, Msg: ${json.error_msg}`);
         // You might want to map these internal errors to McpError as well
-        throw new McpError(400, `PatSnap API Error (${json.error_code}): ${json.error_msg || 'Unknown error'}`);
+        throw new McpError(400, `PatSnap API Error (${json.error_code || 'N/A'}): ${json.error_msg || 'Unknown error'}`);
     }
 
     return {
@@ -251,12 +270,18 @@ async function getSimpleLegalStatus(args: BasePatentArgs): Promise<ServerResult>
   return callPatsnapApi('simple-legal-status', params, 'get simple legal status');
 }
 
-// +++ NEW FUNCTION +++
-// [A009] Most Litigated Patents
 async function getMostLitigatedPatents(args: BasePatentArgs): Promise<ServerResult> {
   const params = buildCommonSearchParams(args);
   // No 'lang' parameter for this endpoint
   return callPatsnapApi('most-asserted', params, 'get most litigated patents');
+}
+
+// +++ NEW FUNCTION +++
+// [A010] Portfolio Value Distribution
+async function getPortfolioValueDistribution(args: BasePatentArgs): Promise<ServerResult> {
+  const params = buildCommonSearchParams(args);
+  // No 'lang' parameter for this endpoint
+  return callPatsnapApi('portfolio-value', params, 'get portfolio value distribution');
 }
 // +++ END NEW FUNCTION +++
 
@@ -264,7 +289,7 @@ async function getMostLitigatedPatents(args: BasePatentArgs): Promise<ServerResu
 const server = new Server(
   {
     name: 'patsnap-mcp',
-    version: '0.1.1' // Incremented version
+    version: '0.1.2' // Incremented version
   },
   {
     capabilities: {
@@ -348,10 +373,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         description: 'Provides a breakdown of the simple legal status (e.g., Active, Inactive, Pending) for patents in the technology field. Understand the proportion of patents currently in effect. Note: Search must contain either keywords or IPC. If both are provided, IPC is prioritized.',
         inputSchema: basePatentInputSchema
       },
-      // +++ NEW TOOL DEFINITION +++
       {
         name: 'get_most_litigated_patents',
         description: 'Identify the patents involved in the most litigation cases, indicating potential risk in a technology space. Returns the Top 10 patents by litigation count. Note: Search must contain either keywords or IPC. If both are provided, IPC is prioritized.',
+        inputSchema: basePatentInputSchema
+      },
+      // +++ NEW TOOL DEFINITION +++
+      {
+        name: 'get_portfolio_value_distribution',
+        description: 'Assess the lucrativeness of a technology space based on the spread of estimated patent valuation (simple families). Higher value buckets indicate more lucrative technologies. Design patents are excluded. Note: Search must contain either keywords or IPC. If both are provided, IPC is prioritized.',
         inputSchema: basePatentInputSchema // Uses base schema as 'lang' is not applicable
       }
       // +++ END NEW TOOL DEFINITION +++
@@ -359,6 +389,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
+// Use a map for cleaner tool dispatching
 const toolImplementations: Record<string, (args: any) => Promise<ServerResult>> = {
     'get_patent_trends': getPatentTrends,
     'get_word_cloud': getWordCloud,
@@ -368,10 +399,11 @@ const toolImplementations: Record<string, (args: any) => Promise<ServerResult>> 
     'get_top_inventors': getTopInventors,
     'get_top_assignees': getTopAssignees,
     'get_simple_legal_status': getSimpleLegalStatus,
-    'get_most_litigated_patents': getMostLitigatedPatents
+    'get_most_litigated_patents': getMostLitigatedPatents,
+    'get_portfolio_value_distribution': getPortfolioValueDistribution, // Add new tool here
 };
 
-server.setRequestHandler(CallToolRequestSchema, async (req: any) => {
+server.setRequestHandler(CallToolRequestSchema, async (req: any) => { // Consider using inferred type: z.infer<typeof CallToolRequestSchema>
   // Basic validation of request structure
   if (!req || typeof req !== 'object' || !req.params || typeof req.params !== 'object') {
        throw new McpError(400, 'Invalid CallToolRequest format: Missing or invalid "params" object.');
@@ -423,7 +455,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req: any) => {
 // Graceful shutdown handling (optional but recommended)
 const transport = new StdioServerTransport();
 server.connect(transport);
-console.log(`PatSnap MCP Server v0.1.1 started and connected via Stdio.`); // Add version to startup message
+console.log(`PatSnap MCP Server v0.1.2 started and connected via Stdio.`);
 
 function shutdown(signal: string) {
     console.log(`Received ${signal}. Shutting down PatSnap MCP server...`);
@@ -438,10 +470,14 @@ process.on('SIGTERM', () => shutdown('SIGTERM')); // kill/system shutdown
 process.on('uncaughtException', (error) => {
     console.error('Unhandled Exception:', error);
     // Consider whether to attempt graceful shutdown or exit immediately
-    process.exit(1); // Exit with error code
+    // Attempt graceful shutdown before exiting
+    shutdown('uncaughtException');
+    // process.exit(1); // Exit with error code - shutdown handles exit
 });
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
     // Consider whether to attempt graceful shutdown or exit immediately
-    process.exit(1); // Exit with error code
+    // Attempt graceful shutdown before exiting
+    shutdown('unhandledRejection');
+    // process.exit(1); // Exit with error code - shutdown handles exit
 });
