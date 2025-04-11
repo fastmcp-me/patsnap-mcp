@@ -5,13 +5,15 @@ import fs from 'fs';
 
 const PATSNAP_CLIENT_ID = process.env.PATSNAP_CLIENT_ID;
 const PATSNAP_CLIENT_SECRET = process.env.PATSNAP_CLIENT_SECRET;
+const PATSNAP_API_BASE_URL = 'https://connect.patsnap.com'; // Define base URL as constant
+const LOG_FILE_PATH = 'patsnap_token_response.log'; // Define log file path
 
 async function getAccessToken(): Promise<string> {
   if (!PATSNAP_CLIENT_ID || !PATSNAP_CLIENT_SECRET) {
     throw new McpError(500, 'Missing PATSNAP_CLIENT_ID or PATSNAP_CLIENT_SECRET');
   }
 
-  const response = await fetch('https://connect.patsnap.com/oauth/token', {
+  const response = await fetch(`${PATSNAP_API_BASE_URL}/oauth/token`, { // Use base URL constant
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -28,198 +30,110 @@ async function getAccessToken(): Promise<string> {
   }
 
   const json = await response.json();
-  fs.appendFileSync('patsnap_token_response.log', `\nPatSnap token response: ${JSON.stringify(json, null, 2)}\n`);
+  // Consider using async file append and error handling
+  try {
+    fs.appendFileSync(LOG_FILE_PATH, `\nPatSnap token response at ${new Date().toISOString()}: ${JSON.stringify(json, null, 2)}\n`);
+  } catch (err) {
+      console.error("Failed to write to log file:", err);
+      // Decide if this should be a critical error or just logged
+  }
   const token = json.access_token || json.token || (json.data && json.data.token);
-  if (!token) {
-    throw new McpError(500, 'Failed to parse access token');
+  if (!token || typeof token !== 'string') { // Add type check for token
+    throw new McpError(500, 'Failed to parse access token from response');
   }
   return token;
 }
 
-async function getPatentTrends(args: { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string }): Promise<ServerResult> {
-  const token = await getAccessToken();
-  const params = new URLSearchParams();
-  if (args.keywords) params.append('keywords', args.keywords);
-  if (args.ipc) params.append('ipc', args.ipc);
-  if (args.apply_start_time) params.append('apply_start_time', args.apply_start_time);
-  if (args.apply_end_time) params.append('apply_end_time', args.apply_end_time);
-  if (args.public_start_time) params.append('public_start_time', args.public_start_time);
-  if (args.public_end_time) params.append('public_end_time', args.public_end_time);
-  if (args.authority) params.append('authority', args.authority);
-  if (PATSNAP_CLIENT_ID) params.append('apikey', PATSNAP_CLIENT_ID);
-
-  const url = `https://connect.patsnap.com/insights/patent-trends?${params.toString()}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
+// Helper function to build URLSearchParams, avoiding repetition
+function buildCommonSearchParams(args: Record<string, string | undefined>): URLSearchParams {
+    const params = new URLSearchParams();
+    for (const key in args) {
+        if (Object.prototype.hasOwnProperty.call(args, key) && args[key] !== undefined) {
+            params.append(key, args[key] as string);
+        }
     }
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new McpError(response.status, `Failed to get patent trends: ${text}`);
-  }
-  const json = await response.json();
-  return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(json, null, 2)
-      }
-    ]
-  };
+    if (PATSNAP_CLIENT_ID) {
+        params.append('apikey', PATSNAP_CLIENT_ID);
+    }
+    return params;
+}
+
+// Helper function for making API calls, avoiding repetition
+async function callPatsnapApi(endpoint: string, params: URLSearchParams, errorContext: string): Promise<ServerResult> {
+    const token = await getAccessToken();
+    const url = `${PATSNAP_API_BASE_URL}/insights/${endpoint}?${params.toString()}`;
+    console.log(`Calling PatSnap API: ${url}`); // Log the request URL
+
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+            // 'Content-Type': 'application/json', // Not needed for GET
+            'Authorization': `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        const text = await response.text();
+        console.error(`API Error (${response.status}) for ${endpoint}: ${text}`); // Log error details
+        throw new McpError(response.status, `Failed to ${errorContext}: ${text}`);
+    }
+
+    const json = await response.json();
+    return {
+        content: [
+            {
+                type: 'text',
+                text: JSON.stringify(json, null, 2)
+            }
+        ]
+    };
+}
+
+
+// --- Existing Tool Functions (using helpers for brevity, but structure maintained) ---
+
+async function getPatentTrends(args: { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string }): Promise<ServerResult> {
+  const params = buildCommonSearchParams(args);
+  return callPatsnapApi('patent-trends', params, 'get patent trends');
 }
 
 async function getWordCloud(args: { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string; lang?: string }): Promise<ServerResult> {
-  const token = await getAccessToken();
-  const params = new URLSearchParams();
-  if (args.keywords) params.append('keywords', args.keywords);
-  if (args.ipc) params.append('ipc', args.ipc);
-  if (args.apply_start_time) params.append('apply_start_time', args.apply_start_time);
-  if (args.apply_end_time) params.append('apply_end_time', args.apply_end_time);
-  if (args.public_start_time) params.append('public_start_time', args.public_start_time);
-  if (args.public_end_time) params.append('public_end_time', args.public_end_time);
-  if (args.authority) params.append('authority', args.authority);
-  if (args.lang) params.append('lang', args.lang);
-  else params.append('lang', 'en');
-  if (PATSNAP_CLIENT_ID) params.append('apikey', PATSNAP_CLIENT_ID);
-
-  const url = `https://connect.patsnap.com/insights/word-cloud?${params.toString()}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    }
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new McpError(response.status, `Failed to get word cloud: ${text}`);
+  const params = buildCommonSearchParams(args);
+  if (!args.lang) { // Add default lang if not provided
+      params.append('lang', 'en');
   }
-  const json = await response.json();
-  return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(json, null, 2)
-      }
-    ]
-  };
+  return callPatsnapApi('word-cloud', params, 'get word cloud');
 }
 
 async function getWheelOfInnovation(args: { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string; lang?: string }): Promise<ServerResult> {
-  const token = await getAccessToken();
-  const params = new URLSearchParams();
-  if (args.keywords) params.append('keywords', args.keywords);
-  if (args.ipc) params.append('ipc', args.ipc);
-  if (args.apply_start_time) params.append('apply_start_time', args.apply_start_time);
-  if (args.apply_end_time) params.append('apply_end_time', args.apply_end_time);
-  if (args.public_start_time) params.append('public_start_time', args.public_start_time);
-  if (args.public_end_time) params.append('public_end_time', args.public_end_time);
-  if (args.authority) params.append('authority', args.authority);
-  if (args.lang) params.append('lang', args.lang);
-  else params.append('lang', 'en');
-  if (PATSNAP_CLIENT_ID) params.append('apikey', PATSNAP_CLIENT_ID);
-
-  const url = `https://connect.patsnap.com/insights/wheel-of-innovation?${params.toString()}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    }
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new McpError(response.status, `Failed to get wheel of innovation: ${text}`);
+  const params = buildCommonSearchParams(args);
+  if (!args.lang) { // Add default lang if not provided
+      params.append('lang', 'en');
   }
-  const json = await response.json();
-  return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(json, null, 2)
-      }
-    ]
-  };
+  return callPatsnapApi('wheel-of-innovation', params, 'get wheel of innovation');
 }
 
 async function getTopAuthoritiesOfOrigin(args: { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string; lang?: string }): Promise<ServerResult> {
-  const token = await getAccessToken();
-  const params = new URLSearchParams();
-  if (args.keywords) params.append('keywords', args.keywords);
-  if (args.ipc) params.append('ipc', args.ipc);
-  if (args.apply_start_time) params.append('apply_start_time', args.apply_start_time);
-  if (args.apply_end_time) params.append('apply_end_time', args.apply_end_time);
-  if (args.public_start_time) params.append('public_start_time', args.public_start_time);
-  if (args.public_end_time) params.append('public_end_time', args.public_end_time);
-  if (args.authority) params.append('authority', args.authority);
-  if (args.lang) params.append('lang', args.lang);
-  else params.append('lang', 'en');
-  if (PATSNAP_CLIENT_ID) params.append('apikey', PATSNAP_CLIENT_ID);
-
-  const url = `https://connect.patsnap.com/insights/priority-country?${params.toString()}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    }
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new McpError(response.status, `Failed to get top authorities of origin: ${text}`);
+  const params = buildCommonSearchParams(args);
+  if (!args.lang) { // Add default lang if not provided
+      params.append('lang', 'en');
   }
-  const json = await response.json();
-  return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(json, null, 2)
-      }
-    ]
-  };
+  return callPatsnapApi('priority-country', params, 'get top authorities of origin');
 }
 
-// [A005] Most Cited Patents
 async function getMostCitedPatents(args: { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string }): Promise<ServerResult> {
-  const token = await getAccessToken();
-  const params = new URLSearchParams();
-  if (args.keywords) params.append('keywords', args.keywords);
-  if (args.ipc) params.append('ipc', args.ipc);
-  if (args.apply_start_time) params.append('apply_start_time', args.apply_start_time);
-  if (args.apply_end_time) params.append('apply_end_time', args.apply_end_time);
-  if (args.public_start_time) params.append('public_start_time', args.public_start_time);
-  if (args.public_end_time) params.append('public_end_time', args.public_end_time);
-  if (args.authority) params.append('authority', args.authority);
-  if (PATSNAP_CLIENT_ID) params.append('apikey', PATSNAP_CLIENT_ID);
-
-  const url = `https://connect.patsnap.com/insights/most-cited?${params.toString()}`;
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    }
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new McpError(response.status, `Failed to get most cited patents: ${text}`);
-  }
-  const json = await response.json();
-  return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(json, null, 2)
-      }
-    ]
-  };
+  const params = buildCommonSearchParams(args);
+  return callPatsnapApi('most-cited', params, 'get most cited patents');
 }
 
-
-
+// +++ NEW FUNCTION +++
+// [A006] Top Inventors
+async function getTopInventors(args: { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string }): Promise<ServerResult> {
+  const params = buildCommonSearchParams(args);
+  // No 'lang' parameter for this endpoint
+  return callPatsnapApi('inventor-ranking', params, 'get top inventors');
+}
+// +++ END NEW FUNCTION +++
 
 
 const server = new Server(
@@ -229,8 +143,7 @@ const server = new Server(
   },
   {
     capabilities: {
-      tools: {
-      },
+      tools: {},
       resources: {}
     }
   }
@@ -239,40 +152,20 @@ const server = new Server(
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
+      // --- Existing Tool Definitions ---
       {
         name: 'get_patent_trends',
         description: 'Analyze annual application and issued trends for patents. Use this tool to understand the trends of patents related to specific technology fields or keywords. Either keywords or IPC classification must be specified.',
         inputSchema: {
           type: 'object',
           properties: {
-            keywords: {
-              type: 'string',
-              description: 'Keywords to search within patent title and abstract. Supports AND, OR, NOT search logic. Example: "mobile phone AND (screen OR battery)"'
-            },
-            ipc: {
-              type: 'string',
-              description: 'Patent IPC classification code. Used to specify a particular technology field.'
-            },
-            apply_start_time: {
-              type: 'string',
-              description: 'Patent application start year (yyyy format). Specifies the start year of the analysis period.'
-            },
-            apply_end_time: {
-              type: 'string',
-              description: 'Patent application end year (yyyy format). Specifies the end year of the analysis period.'
-            },
-            public_start_time: {
-              type: 'string',
-              description: 'Patent publication start year (yyyy format). Specifies the start year of the publication data analysis period.'
-            },
-            public_end_time: {
-              type: 'string',
-              description: 'Patent publication end year (yyyy format). Specifies the end year of the publication data analysis period.'
-            },
-            authority: {
-              type: 'string',
-              description: 'Patent authority. Used to target patents from specific countries or regions. Example: CN, US, JP'
-            }
+            keywords: { type: 'string', description: 'Keywords to search within patent title and abstract. Supports AND, OR, NOT search logic. Example: "mobile phone AND (screen OR battery)"' },
+            ipc: { type: 'string', description: 'Patent IPC classification code. Used to specify a particular technology field.' },
+            apply_start_time: { type: 'string', description: 'Patent application start year (yyyy format). Specifies the start year of the analysis period.' },
+            apply_end_time: { type: 'string', description: 'Patent application end year (yyyy format). Specifies the end year of the analysis period.' },
+            public_start_time: { type: 'string', description: 'Patent publication start year (yyyy format). Specifies the start year of the publication data analysis period.' },
+            public_end_time: { type: 'string', description: 'Patent publication end year (yyyy format). Specifies the end year of the publication data analysis period.' },
+            authority: { type: 'string', description: 'Patent authority. Used to target patents from specific countries or regions. Example: CN, US, JP' }
           }
         }
       },
@@ -282,38 +175,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: 'object',
           properties: {
-            keywords: {
-              type: 'string',
-              description: 'Keywords to search within patent title and abstract. Supports AND, OR, NOT search logic. Example: "mobile phone AND (screen OR battery)"'
-            },
-            ipc: {
-              type: 'string',
-              description: 'Patent IPC classification code. Used to specify a particular technology field.'
-            },
-            apply_start_time: {
-              type: 'string',
-              description: 'Patent application start year (yyyy format). Specifies the start year of the analysis period.'
-            },
-            apply_end_time: {
-              type: 'string',
-              description: 'Patent application end year (yyyy format). Specifies the end year of the analysis period.'
-            },
-            public_start_time: {
-              type: 'string',
-              description: 'Patent publication start year (yyyy format). Specifies the start year of the publication data analysis period.'
-            },
-            public_end_time: {
-              type: 'string',
-              description: 'Patent publication end year (yyyy format). Specifies the end year of the publication data analysis period.'
-            },
-            authority: {
-              type: 'string',
-              description: 'Patent authority. Used to target patents from specific countries or regions. Example: CN, US, JP'
-            },
-            lang: {
-              type: 'string',
-              description: 'Language setting. Default is "en" (English). You can choose "cn" (Chinese) or "en" (English).'
-            }
+            keywords: { type: 'string', description: 'Keywords to search within patent title and abstract. Supports AND, OR, NOT search logic. Example: "mobile phone AND (screen OR battery)"' },
+            ipc: { type: 'string', description: 'Patent IPC classification code. Used to specify a particular technology field.' },
+            apply_start_time: { type: 'string', description: 'Patent application start year (yyyy format). Specifies the start year of the analysis period.' },
+            apply_end_time: { type: 'string', description: 'Patent application end year (yyyy format). Specifies the end year of the analysis period.' },
+            public_start_time: { type: 'string', description: 'Patent publication start year (yyyy format). Specifies the start year of the publication data analysis period.' },
+            public_end_time: { type: 'string', description: 'Patent publication end year (yyyy format). Specifies the end year of the publication data analysis period.' },
+            authority: { type: 'string', description: 'Patent authority. Used to target patents from specific countries or regions. Example: CN, US, JP' },
+            lang: { type: 'string', description: 'Language setting. Default is "en" (English). You can choose "cn" (Chinese) or "en" (English).' }
           }
         }
       },
@@ -323,38 +192,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: 'object',
           properties: {
-            keywords: {
-              type: 'string',
-              description: 'Keywords to search within patent title and abstract. Supports AND, OR, NOT search logic. Example: "mobile phone AND (screen OR battery)"'
-            },
-            ipc: {
-              type: 'string',
-              description: 'Patent IPC classification code. Used to specify a particular technology field.'
-            },
-            apply_start_time: {
-              type: 'string',
-              description: 'Patent application start year (yyyy format). Specifies the start year of the analysis period.'
-            },
-            apply_end_time: {
-              type: 'string',
-              description: 'Patent application end year (yyyy format). Specifies the end year of the analysis period.'
-            },
-            public_start_time: {
-              type: 'string',
-              description: 'Patent publication start year (yyyy format). Specifies the start year of the publication data analysis period.'
-            },
-            public_end_time: {
-              type: 'string',
-              description: 'Patent publication end year (yyyy format). Specifies the end year of the publication data analysis period.'
-            },
-            authority: {
-              type: 'string',
-              description: 'Patent authority. Used to target patents from specific countries or regions. Example: CN, US, JP'
-            },
-            lang: {
-              type: 'string',
-              description: 'Language setting. Default is "en" (English). You can choose "cn" (Chinese) or "en" (English).'
-            }
+            keywords: { type: 'string', description: 'Keywords to search within patent title and abstract. Supports AND, OR, NOT search logic. Example: "mobile phone AND (screen OR battery)"' },
+            ipc: { type: 'string', description: 'Patent IPC classification code. Used to specify a particular technology field.' },
+            apply_start_time: { type: 'string', description: 'Patent application start year (yyyy format). Specifies the start year of the analysis period.' },
+            apply_end_time: { type: 'string', description: 'Patent application end year (yyyy format). Specifies the end year of the analysis period.' },
+            public_start_time: { type: 'string', description: 'Patent publication start year (yyyy format). Specifies the start year of the publication data analysis period.' },
+            public_end_time: { type: 'string', description: 'Patent publication end year (yyyy format). Specifies the end year of the publication data analysis period.' },
+            authority: { type: 'string', description: 'Patent authority. Used to target patents from specific countries or regions. Example: CN, US, JP' },
+            lang: { type: 'string', description: 'Language setting. Default is "en" (English). You can choose "cn" (Chinese) or "en" (English).' }
           }
         }
       },
@@ -364,34 +209,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: 'object',
           properties: {
-            keywords: {
-              type: 'string',
-              description: 'Searches for keywords within patent title and summary. Supports AND, OR, NOT search logic, for example "mobile phone AND (screen OR battery)".'
-            },
-            ipc: {
-              type: 'string',
-              description: 'Patent IPC classification'
-            },
-            apply_start_time: {
-              type: 'string',
-              description: 'Patent apply date from, format:yyyy'
-            },
-            apply_end_time: {
-              type: 'string',
-              description: 'Patent apply date to, format:yyyy'
-            },
-            public_start_time: {
-              type: 'string',
-              description: 'Patent publication date from, format:yyyy'
-            },
-            public_end_time: {
-              type: 'string',
-              description: 'Patent publication date to, format:yyyy'
-            },
-            authority: {
-              type: 'string',
-              description: 'Select the authority of the patent, the default query all databases, eg CN、US、EP、JP.'
-            }
+            keywords: { type: 'string', description: 'Searches for keywords within patent title and summary. Supports AND, OR, NOT search logic, for example "mobile phone AND (screen OR battery)".' },
+            ipc: { type: 'string', description: 'Patent IPC classification' },
+            apply_start_time: { type: 'string', description: 'Patent apply date from, format:yyyy' },
+            apply_end_time: { type: 'string', description: 'Patent apply date to, format:yyyy' },
+            public_start_time: { type: 'string', description: 'Patent publication date from, format:yyyy' },
+            public_end_time: { type: 'string', description: 'Patent publication date to, format:yyyy' },
+            authority: { type: 'string', description: 'Select the authority of the patent, the default query all databases, eg CN、US、EP、JP.' }
           }
         }
       },
@@ -401,60 +225,82 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: 'object',
           properties: {
-            keywords: {
-              type: 'string',
-              description: 'Keywords to search within patent title and abstract. Supports AND, OR, NOT search logic. Example: "mobile phone AND (screen OR battery)"'
-            },
-            ipc: {
-              type: 'string',
-              description: 'Patent IPC classification code. Used to specify a particular technology field.'
-            },
-            apply_start_time: {
-              type: 'string',
-              description: 'Patent application start year (yyyy format). Specifies the start year of the analysis period.'
-            },
-            apply_end_time: {
-              type: 'string',
-              description: 'Patent application end year (yyyy format). Specifies the end year of the analysis period.'
-            },
-            public_start_time: {
-              type: 'string',
-              description: 'Patent publication start year (yyyy format). Specifies the start year of the publication data analysis period.'
-            },
-            public_end_time: {
-              type: 'string',
-              description: 'Patent publication end year (yyyy format). Specifies the end year of the publication data analysis period.'
-            },
-            authority: {
-              type: 'string',
-              description: 'Patent authority. Used to target patents from specific countries or regions. Example: CN, US, JP'
-            },
-            lang: {
-              type: 'string',
-              description: 'Language setting. Default is "en" (English). You can choose "cn" (Chinese) or "en" (English).'
-            }
+            keywords: { type: 'string', description: 'Keywords to search within patent title and abstract. Supports AND, OR, NOT search logic. Example: "mobile phone AND (screen OR battery)"' },
+            ipc: { type: 'string', description: 'Patent IPC classification code. Used to specify a particular technology field.' },
+            apply_start_time: { type: 'string', description: 'Patent application start year (yyyy format). Specifies the start year of the analysis period.' },
+            apply_end_time: { type: 'string', description: 'Patent application end year (yyyy format). Specifies the end year of the analysis period.' },
+            public_start_time: { type: 'string', description: 'Patent publication start year (yyyy format). Specifies the start year of the publication data analysis period.' },
+            public_end_time: { type: 'string', description: 'Patent publication end year (yyyy format). Specifies the end year of the publication data analysis period.' },
+            authority: { type: 'string', description: 'Patent authority. Used to target patents from specific countries or regions. Example: CN, US, JP' },
+            lang: { type: 'string', description: 'Language setting. Default is "en" (English). You can choose "cn" (Chinese) or "en" (English).' }
+          }
+        }
+      },
+      // +++ NEW TOOL DEFINITION +++
+      {
+        name: 'get_top_inventors',
+        description: 'Shows the top inventors in the technology field. Useful for evaluating top performers or recruiting. Returns up to the top 10 inventors. Note: Search must contain either keywords or IPC. If search contains both parameters, IPC will be prioritized.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            keywords: { type: 'string', description: 'Searches for keywords within patent title and summary. Supports AND, OR, NOT search logic, for example "mobile phone AND (screen OR battery)".' },
+            ipc: { type: 'string', description: 'Patent IPC classification' },
+            apply_start_time: { type: 'string', description: 'Patent apply date from, format:yyyy' },
+            apply_end_time: { type: 'string', description: 'Patent apply date to, format:yyyy' },
+            public_start_time: { type: 'string', description: 'Patent publication date from, format:yyyy' },
+            public_end_time: { type: 'string', description: 'Patent publication date to, format:yyyy' },
+            authority: { type: 'string', description: 'Select the authority of the patent, the default query all databases, eg CN、US、EP、JP.' }
           }
         }
       }
+      // +++ END NEW TOOL DEFINITION +++
     ]
-};
+  };
 });
 
+// Define argument types for better readability and potential future validation
+type BasePatentArgs = { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string };
+type LangPatentArgs = BasePatentArgs & { lang?: string };
+
 server.setRequestHandler(CallToolRequestSchema, async (req: any) => {
+  // Basic validation of request structure
+  if (!req || typeof req !== 'object' || !req.params || typeof req.params !== 'object') {
+       throw new McpError(400, 'Invalid CallToolRequest format.');
+  }
+
   const { name, arguments: args } = req.params;
+
+  if (typeof name !== 'string' || !name) {
+       throw new McpError(400, 'Tool name is missing or invalid.');
+  }
+   if (typeof args !== 'object' || args === null) {
+       // Allow empty arguments object {}
+       // throw new McpError(400, 'Tool arguments are missing or invalid.');
+       console.warn(`Tool ${name} called with null or non-object arguments.`);
+   }
+
+  // Use type assertion cautiously, assuming SDK or caller provides correct structure
+  const toolArgs = args || {}; // Ensure args is at least an empty object
+
   if (name === 'get_patent_trends') {
-    return await getPatentTrends(args as { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string });
+    return await getPatentTrends(toolArgs as BasePatentArgs);
   } else if (name === 'get_word_cloud') {
-    return await getWordCloud(args as { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string; lang?: string });
+    return await getWordCloud(toolArgs as LangPatentArgs);
   } else if (name === 'get_wheel_of_innovation') {
-    return await getWheelOfInnovation(args as { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string; lang?: string });
+    return await getWheelOfInnovation(toolArgs as LangPatentArgs);
   } else if (name === 'get_top_authorities_of_origin') {
-    return await getTopAuthoritiesOfOrigin(args as { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string; lang?: string });
+    return await getTopAuthoritiesOfOrigin(toolArgs as LangPatentArgs);
   } else if (name === 'get_most_cited_patents') {
-    return await getMostCitedPatents(args as { keywords?: string; ipc?: string; apply_start_time?: string; apply_end_time?: string; public_start_time?: string; public_end_time?: string; authority?: string });
+    return await getMostCitedPatents(toolArgs as BasePatentArgs);
+  // +++ NEW TOOL HANDLER +++
+  } else if (name === 'get_top_inventors') {
+    return await getTopInventors(toolArgs as BasePatentArgs);
+  // +++ END NEW TOOL HANDLER +++
   } else {
+    console.error(`Unknown tool called: ${name}`); // Log unknown tool calls
     throw new McpError(404, `Unknown tool: ${name}`);
   }
 });
 
 server.connect(new StdioServerTransport());
+console.log("PatSnap MCP Server started and connected via Stdio."); // Add a startup message
