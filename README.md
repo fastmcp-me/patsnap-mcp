@@ -51,6 +51,10 @@ To integrate this MCP server with your MCP Host, add the following configuration
 
 Ensure you replace `your_patsnap_client_id_here` and `your_patsnap_client_secret_here` with your actual PatSnap API credentials. This configuration allows the MCP Host to invoke the server using `npx @kunihiros/patsnap-mcp`.
 
+## Service Access
+
+For more information and get required tokens for the PatSnap service, please visit: [https://open.patsnap.com/home](https://open.patsnap.com/home)
+
 ## License
 
 This project is licensed under the MIT License.
