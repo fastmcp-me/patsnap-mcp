@@ -2,6 +2,10 @@
 
 This MCP server is designed to collect patent-related information from PatSnap's API for trend analysis and reporting. It is not intended for individual patent investigations.
 
+<a href="https://glama.ai/mcp/servers/@KunihiroS/patsnap-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@KunihiroS/patsnap-mcp/badge" alt="PatSnap Server MCP server" />
+</a>
+
 ## Features
 
 This server provides the following tools for interacting with the PatSnap Insights API:
