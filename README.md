@@ -1,3 +1,10 @@
+[![Add to Cursor](https://fastmcp.me/badges/cursor_dark.svg)](https://fastmcp.me/MCP/Details/635/patsnap-patent-analytics)
+[![Add to VS Code](https://fastmcp.me/badges/vscode_dark.svg)](https://fastmcp.me/MCP/Details/635/patsnap-patent-analytics)
+[![Add to Claude](https://fastmcp.me/badges/claude_dark.svg)](https://fastmcp.me/MCP/Details/635/patsnap-patent-analytics)
+[![Add to ChatGPT](https://fastmcp.me/badges/chatgpt_dark.svg)](https://fastmcp.me/MCP/Details/635/patsnap-patent-analytics)
+[![Add to Codex](https://fastmcp.me/badges/codex_dark.svg)](https://fastmcp.me/MCP/Details/635/patsnap-patent-analytics)
+[![Add to Gemini](https://fastmcp.me/badges/gemini_dark.svg)](https://fastmcp.me/MCP/Details/635/patsnap-patent-analytics)
+
 # PatSnap MCP Server
 
 This MCP server is designed to collect patent-related information from PatSnap's API for trend analysis and reporting. It is not intended for individual patent investigations.
